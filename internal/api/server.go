@@ -1,6 +1,7 @@
 package api
 
 import (
+	"log/slog"
 	"net/http"
 
 	"rewards-ledger/internal/domain"
@@ -17,11 +18,12 @@ type Store interface {
 }
 
 type Server struct {
-	store Store
+	store  Store
+	logger *slog.Logger
 }
 
-func NewServer(s Store) *Server {
-	return &Server{store: s}
+func NewServer(s Store, logger *slog.Logger) *Server {
+	return &Server{store: s, logger: logger}
 }
 
 func (s *Server) Routes() http.Handler {
@@ -33,5 +35,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
-	return mux
+	mux.HandleFunc("GET /docs", handleDocs)
+	mux.HandleFunc("GET /openapi.yaml", handleOpenAPISpec)
+	return requestID(logging(s.logger, mux))
 }

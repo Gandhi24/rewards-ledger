@@ -4,7 +4,7 @@ package main
 import (
 	"context"
 	"errors"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -16,11 +16,12 @@ import (
 )
 
 func main() {
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	addr := ":" + envOr("PORT", "8080")
 
 	srv := &http.Server{
 		Addr:         addr,
-		Handler:      api.NewServer(store.New()).Routes(),
+		Handler:      api.NewServer(store.New(), logger).Routes(),
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,
 		IdleTimeout:  60 * time.Second,
@@ -28,9 +29,10 @@ func main() {
 
 	// Run the server in a goroutine so we can listen for shutdown signals.
 	go func() {
-		log.Printf("rewards-ledger listening on %s", addr)
+		logger.Info("server starting", "addr", addr)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatalf("server error: %v", err)
+			logger.Error("server error", "error", err)
+			os.Exit(1)
 		}
 	}()
 
@@ -38,11 +40,11 @@ func main() {
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 	<-stop
 
-	log.Println("shutting down...")
+	logger.Info("shutting down")
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
-		log.Printf("graceful shutdown failed: %v", err)
+		logger.Error("graceful shutdown failed", "error", err)
 	}
 }
 

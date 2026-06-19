@@ -61,6 +61,10 @@ func (s *Server) handleCreateReward(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, domain.ErrInsufficientBalance):
 			writeError(w, http.StatusUnprocessableEntity, err.Error())
 		default:
+			s.logger.ErrorContext(r.Context(), "create reward failed",
+				"request_id", requestIDFromCtx(r.Context()),
+				"error", err,
+			)
 			writeError(w, http.StatusInternalServerError, "could not create reward")
 		}
 		return

@@ -49,6 +49,10 @@ func (s *Server) handleCreateMember(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusConflict, err.Error())
 			return
 		}
+		s.logger.ErrorContext(r.Context(), "create member failed",
+			"request_id", requestIDFromCtx(r.Context()),
+			"error", err,
+		)
 		writeError(w, http.StatusInternalServerError, "could not create member")
 		return
 	}
