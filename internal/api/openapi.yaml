@@ -1,0 +1,277 @@
+openapi: 3.0.3
+info:
+  title: Rewards Ledger API
+  description: Points ledger — earn and redeem loyalty points for members.
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+
+tags:
+  - name: Members
+  - name: Rewards
+  - name: Health
+
+paths:
+  /health:
+    get:
+      tags: [Health]
+      summary: Health check
+      operationId: getHealth
+      responses:
+        "200":
+          description: Service is up
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+  /members:
+    post:
+      tags: [Members]
+      summary: Create a member
+      operationId: createMember
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMemberRequest"
+      responses:
+        "201":
+          description: Member created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberResponse"
+        "400":
+          description: Missing or invalid fields
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Email already registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /members/{memberID}:
+    get:
+      tags: [Members]
+      summary: Get a member with current points balance
+      operationId: getMember
+      parameters:
+        - $ref: "#/components/parameters/MemberID"
+      responses:
+        "200":
+          description: Member found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberWithBalanceResponse"
+        "400":
+          description: Invalid member ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Member not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /members/{memberID}/rewards:
+    get:
+      tags: [Rewards]
+      summary: List all reward entries for a member
+      operationId: listRewards
+      parameters:
+        - $ref: "#/components/parameters/MemberID"
+      responses:
+        "200":
+          description: Ledger entries in insertion order
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RewardResponse"
+        "400":
+          description: Invalid member ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Member not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /rewards:
+    post:
+      tags: [Rewards]
+      summary: Add a reward entry (earn or redeem)
+      operationId: createReward
+      description: |
+        The caller always supplies a **positive** `points` value. The server
+        applies the sign based on `point_type_id` — type 4 (Redemption) is
+        stored as negative; types 1-3 are stored as positive.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRewardRequest"
+      responses:
+        "201":
+          description: Reward entry created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RewardResponse"
+        "400":
+          description: Invalid point_type_id or non-positive points
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Member not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Redemption exceeds available balance
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  parameters:
+    MemberID:
+      name: memberID
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        example: 1
+
+  schemas:
+    CreateMemberRequest:
+      type: object
+      required: [name, email]
+      properties:
+        name:
+          type: string
+          example: Alice
+        email:
+          type: string
+          format: email
+          example: alice@example.com
+
+    MemberResponse:
+      type: object
+      properties:
+        member_id:
+          type: integer
+          format: int64
+          example: 1
+        name:
+          type: string
+          example: Alice
+        email:
+          type: string
+          example: alice@example.com
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-06-19T10:00:00Z"
+
+    MemberWithBalanceResponse:
+      allOf:
+        - $ref: "#/components/schemas/MemberResponse"
+        - type: object
+          properties:
+            points_balance:
+              type: integer
+              format: int64
+              description: Current signed sum of all reward entries
+              example: 250
+
+    CreateRewardRequest:
+      type: object
+      required: [member_id, point_type_id, points]
+      properties:
+        member_id:
+          type: integer
+          format: int64
+          example: 1
+        point_type_id:
+          $ref: "#/components/schemas/PointType"
+        points:
+          type: integer
+          format: int64
+          description: Always a positive magnitude — the server applies the sign.
+          minimum: 1
+          example: 100
+        description:
+          type: string
+          example: "Order #1001"
+
+    RewardResponse:
+      type: object
+      properties:
+        reward_id:
+          type: integer
+          format: int64
+          example: 1
+        member_id:
+          type: integer
+          format: int64
+          example: 1
+        point_type_id:
+          $ref: "#/components/schemas/PointType"
+        points:
+          type: integer
+          format: int64
+          description: Signed value — positive for credits, negative for debits.
+          example: -100
+        description:
+          type: string
+          example: "Redeemed for discount"
+        event_date:
+          type: string
+          format: date-time
+          example: "2026-06-19T10:05:00Z"
+
+    PointType:
+      type: integer
+      description: |
+        Point type identifier:
+        - `1` — PurchaseEarning (credit)
+        - `2` — ReferralBonus (credit)
+        - `3` — Cashback (credit)
+        - `4` — Redemption (debit)
+      enum: [1, 2, 3, 4]
+      example: 1
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          example: "member not found"
